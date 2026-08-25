@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>张元济社会网络关系研究系统</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- 加载遮罩 -->
+    <div id="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-title">张元济社会网络关系研究系统</div>
+            <div class="loading-spinner"></div>
+            <div class="loading-text" id="loading-text">正在加载数据...</div>
+            <div class="loading-progress"><div class="loading-bar" id="loading-bar"></div></div>
+        </div>
+    </div>
+
+    <!-- 顶部导航 -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo-icon">張</div>
+            <div class="header-title">张元济社会网络关系研究系统</div>
+        </div>
+        <nav class="nav">
+            <button class="nav-btn active" data-page="home">首页</button>
+            <button class="nav-btn" data-page="search">书信检索</button>
+            <button class="nav-btn" data-page="network">人物网络</button>
+            <button class="nav-btn" data-page="map">时空地图</button>
+            <button class="nav-btn" data-page="ai">AI问答</button>
+        </nav>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="main">
+        <!-- 首页 -->
+        <section class="page active" id="page-home">
+            <div class="hero">
+                <div class="hero-decoration left"></div>
+                <div class="hero-content">
+                    <h1 class="hero-title">张元济社会网络关系研究</h1>
+                    <p class="hero-subtitle">基于4611封书信的出版家社会关系可视化研究平台</p>
+                    <div class="hero-stats">
+                        <div class="stat-item">
+                            <div class="stat-number" id="stat-letters">4611</div>
+                            <div class="stat-label">书信总数</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number" id="stat-people">198</div>
+                            <div class="stat-label">人物节点</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number" id="stat-relations">1369</div>
+                            <div class="stat-label">关系数量</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number" id="stat-geo">488</div>
+                            <div class="stat-label">地理数据</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-decoration right"></div>
+            </div>
+
+            <div class="modules-grid">
+                <div class="module-card" data-page="search">
+                    <div class="module-icon">📜</div>
+                    <h3 class="module-title">书信检索</h3>
+                    <p class="module-desc">通过关键词、收信人、发件人、时间地点检索4611封书信，点击卡片查看全文</p>
+                    <div class="module-arrow">进入 →</div>
+                </div>
+                <div class="module-card" data-page="network">
+                    <div class="module-icon">🕸️</div>
+                    <h3 class="module-title">人物社会网络</h3>
+                    <p class="module-desc">ECharts力导向关系图，13种关系类型可视化，点击节点查看人物简介与关系信件</p>
+                    <div class="module-arrow">进入 →</div>
+                </div>
+                <div class="module-card" data-page="map">
+                    <div class="module-icon">🗺️</div>
+                    <h3 class="module-title">时空轨迹地图</h3>
+                    <p class="module-desc">Leaflet地图可视化书信往来轨迹，拖动时间轴观察不同年代的通信地理分布</p>
+                    <div class="module-arrow">进入 →</div>
+                </div>
+                <div class="module-card" data-page="ai">
+                    <div class="module-icon">🤖</div>
+                    <h3 class="module-title">张元济AI问答</h3>
+                    <p class="module-desc">基于书信数据的智能问答，支持关键词匹配和DeepSeek AI两种模式</p>
+                    <div class="module-arrow">进入 →</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 书信检索 -->
+        <section class="page" id="page-search">
+            <div class="page-header">
+                <h2 class="page-title">书信检索</h2>
+                <div class="page-subtitle" id="search-count">共 0 封书信</div>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="search-input" class="search-input" placeholder="输入关键词、收信人、发件人、地点...">
+                <select id="search-filter" class="search-select">
+                    <option value="all">全部字段</option>
+                    <option value="sender">发件人</option>
+                    <option value="receiver">收信人</option>
+                    <option value="summary">内容摘要</option>
+                    <option value="date">日期</option>
+                    <option value="from_city">发信地</option>
+                    <option value="to_city">收信地</option>
+                </select>
+                <button class="search-btn" id="search-btn">检索</button>
+            </div>
+            <div class="letters-grid" id="letters-grid"></div>
+            <div class="pagination" id="pagination"></div>
+        </section>
+
+        <!-- 人物网络 -->
+        <section class="page" id="page-network">
+            <div class="page-header">
+                <h2 class="page-title">人物社会网络关系</h2>
+                <div class="network-controls">
+                    <label>显示人物数：<span id="node-count-label">50</span></label>
+                    <input type="range" id="node-count-slider" min="10" max="100" value="50" step="5">
+                </div>
+            </div>
+            <div class="network-filters" id="network-filters"></div>
+            <div class="network-container">
+                <div class="network-sidebar" id="network-sidebar">
+                    <div class="sidebar-placeholder">点击图中节点查看人物详情</div>
+                </div>
+                <div class="network-chart" id="network-chart"></div>
+            </div>
+            <div class="network-legend" id="network-legend"></div>
+        </section>
+
+        <!-- 时空地图 -->
+        <section class="page" id="page-map">
+            <div class="page-header">
+                <h2 class="page-title">时空轨迹与出版地图</h2>
+                <div class="map-stats" id="map-stats">
+                    <span>信件：<strong id="map-letter-count">0</strong>封</span>
+                    <span>城市：<strong id="map-city-count">0</strong>个</span>
+                    <span>路线：<strong id="map-route-count">0</strong>条</span>
+                </div>
+            </div>
+            <div class="map-container">
+                <div class="map-sidebar">
+                    <h4>热门路线 TOP5</h4>
+                    <div id="map-top-routes"></div>
+                </div>
+                <div class="map-wrapper">
+                    <div id="map" class="map"></div>
+                    <div class="timeline-container">
+                        <div class="timeline-label">
+                            <span id="year-start">1897</span> - <span id="year-end">1954</span>
+                        </div>
+                        <div class="timeline-sliders">
+                            <input type="range" id="timeline-start" min="1897" max="1954" value="1897">
+                            <input type="range" id="timeline-end" min="1897" max="1954" value="1954">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI问答 -->
+        <section class="page" id="page-ai">
+            <div class="page-header">
+                <h2 class="page-title">张元济AI问答</h2>
+                <div class="ai-mode-switch">
+                    <button class="mode-btn active" data-mode="keyword">关键词匹配</button>
+                    <button class="mode-btn" data-mode="deepseek">DeepSeek AI</button>
+                </div>
+            </div>
+            <div class="ai-container">
+                <div class="ai-chat" id="ai-chat">
+                    <div class="ai-message bot">
+                        <div class="message-avatar">張</div>
+                        <div class="message-content">您好！我是张元济研究助手，您可以问我关于张元济及其书信的任何问题。</div>
+                    </div>
+                </div>
+                <div class="ai-quick-questions">
+                    <button class="quick-btn" data-q="张元济是谁？">张元济是谁？</button>
+                    <button class="quick-btn" data-q="张元济的主要通信对象有哪些？">主要通信对象</button>
+                    <button class="quick-btn" data-q="张元济与商务印书馆的关系">与商务印书馆</button>
+                    <button class="quick-btn" data-q="张元济的书信主要涉及哪些内容">书信内容</button>
+                </div>
+                <div class="ai-input-area">
+                    <input type="text" id="ai-input" class="ai-input" placeholder="输入您的问题...">
+                    <button class="ai-send-btn" id="ai-send-btn">发送</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 信件全文模态框 -->
+    <div class="modal" id="letter-modal">
+        <div class="modal-overlay" id="modal-overlay"></div>
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close">×</button>
+            <div class="modal-body" id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
