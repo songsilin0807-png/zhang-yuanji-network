@@ -11,6 +11,21 @@ const DATA_URLS = {
 
 const _k1 = 'sk-12e4bcb37737'; const _k2 = '4d31ab56b7047ff77da9'; const DEEPSEEK_API_KEY = _k1 + _k2;
 
+// 城市经纬度映射表
+const CITY_COORDS = {
+    '上海': [31.23, 121.47], '北京': [39.90, 116.40], '南京': [32.06, 118.80],
+    '天津': [39.13, 117.20], '广州': [23.13, 113.26], '杭州': [30.27, 120.15],
+    '苏州': [31.30, 120.58], '武汉': [30.59, 114.31], '成都': [30.57, 104.07],
+    '重庆': [29.56, 106.55], '长沙': [28.23, 112.94], '南昌': [28.68, 115.89],
+    '济南': [36.65, 117.00], '太原': [37.87, 112.55], '贵阳': [26.65, 106.63],
+    '哈尔滨': [45.80, 126.53], '开封': [34.80, 114.31], '镇江': [32.20, 119.45],
+    '无锡': [31.57, 120.30], '嘉兴': [30.75, 120.76], '湖州': [30.87, 120.09],
+    '绍兴': [30.00, 120.58], '常熟': [31.65, 120.74], '海盐': [30.53, 120.96],
+    '东莞': [23.02, 113.75], '九江': [29.71, 116.00], '庐山': [29.57, 115.98],
+    '香港': [22.32, 114.17], '伦敦': [51.51, -0.13], '巴黎': [48.86, 2.35],
+    '柏林': [52.52, 13.40], '吉隆坡': [3.14, 101.69], '日本': [35.68, 139.69]
+};
+
 let appData = {
     lettersMeta: [], lettersDemo: [], entities: [],
     relations: [], peopleIntro: [], geoLetters: [], relationTypes: []
@@ -308,7 +323,7 @@ function renderNetwork() {
             name: n.name, value: n.count,
             symbolSize: Math.min(50, Math.max(12, Math.sqrt(n.count) * 2.5)),
             itemStyle: { color: n.name === '张元济' ? '#D4AF37' : '#4A90D9' },
-            intro: intro ? intro.description : '',
+            intro: intro ? (intro.intro || intro.description || '') : '',
             relations: n.relations || []
         };
     });
@@ -349,7 +364,7 @@ function initMapPage() {
     if (!mapDom) { console.error('map 元素不存在'); return; }
     if (typeof L === 'undefined') { console.error('Leaflet 未加载'); return; }
 
-    const years = appData.geoLetters.map(g => parseInt(g.year)).filter(y => !isNaN(y));
+    const years = appData.geoLetters.map(g => parseInt((g.date || '').slice(0, 4))).filter(y => !isNaN(y));
     if (years.length) { mapState.yearStart = Math.min(...years); mapState.yearEnd = Math.max(...years); }
     document.getElementById('year-start').textContent = mapState.yearStart;
     document.getElementById('year-end').textContent = mapState.yearEnd;
@@ -370,15 +385,17 @@ function renderMap() {
     mapState.markers.forEach(m => mapState.map.removeLayer(m));
     mapState.lines.forEach(l => mapState.map.removeLayer(l));
     mapState.markers = []; mapState.lines = [];
-    const filtered = appData.geoLetters.filter(g => { const y = parseInt(g.year); return !isNaN(y) && y >= mapState.yearStart && y <= mapState.yearEnd; });
+    const filtered = appData.geoLetters.filter(g => { const y = parseInt((g.date || '').slice(0, 4)); return !isNaN(y) && y >= mapState.yearStart && y <= mapState.yearEnd; });
     const cityMap = {}; const routeMap = {};
     filtered.forEach(g => {
-        if (g.from_lat && g.to_lat) {
+        const fromCoord = CITY_COORDS[g.from_city];
+        const toCoord = CITY_COORDS[g.to_city];
+        if (fromCoord && toCoord) {
             const routeKey = `${g.from_city}-${g.to_city}`;
-            if (!routeMap[routeKey]) routeMap[routeKey] = { from: g.from_city, to: g.to_city, fromLat: g.from_lat, fromLng: g.from_lng, toLat: g.to_lat, toLng: g.to_lng, count: 0 };
+            if (!routeMap[routeKey]) routeMap[routeKey] = { from: g.from_city, to: g.to_city, fromLat: fromCoord[0], fromLng: fromCoord[1], toLat: toCoord[0], toLng: toCoord[1], count: 0 };
             routeMap[routeKey].count++;
-            if (!cityMap[g.from_city]) cityMap[g.from_city] = { lat: g.from_lat, lng: g.from_lng, count: 0 };
-            if (!cityMap[g.to_city]) cityMap[g.to_city] = { lat: g.to_lat, lng: g.to_lng, count: 0 };
+            if (!cityMap[g.from_city]) cityMap[g.from_city] = { lat: fromCoord[0], lng: fromCoord[1], count: 0 };
+            if (!cityMap[g.to_city]) cityMap[g.to_city] = { lat: toCoord[0], lng: toCoord[1], count: 0 };
             cityMap[g.from_city].count++; cityMap[g.to_city].count++;
         }
     });
