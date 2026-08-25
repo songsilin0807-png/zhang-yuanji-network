@@ -1,12 +1,12 @@
 // 张元济社会网络关系研究系统 - 主逻辑
 const DATA_URLS = {
-    lettersMeta: 'https://aka.doubaocdn.com/s/xwzOTOgDQ3',
-    lettersDemo: 'https://aka.doubaocdn.com/s/2FBYkuEcLU',
-    entities: 'https://aka.doubaocdn.com/s/HZ31Rh2FpB',
-    relations: 'https://aka.doubaocdn.com/s/zeUhZ9TaIU',
-    peopleIntro: 'https://aka.doubaocdn.com/s/ZqqBOQkLx3',
-    geoLetters: 'https://aka.doubaocdn.com/s/W9T9ffz3uX',
-    relationTypes: 'https://aka.doubaocdn.com/s/JIzcVpxLlz'
+    lettersMeta: 'data/letters_meta.json',
+    lettersDemo: 'data/letters_demo.json',
+    entities: 'data/entities.json',
+    relations: 'data/relations_full.json',
+    peopleIntro: 'data/people_intro.json',
+    geoLetters: 'data/geo_letters.json',
+    relationTypes: 'data/relation_types.json'
 };
 
 const _k1 = 'sk-12e4bcb37737'; const _k2 = '4d31ab56b7047ff77da9'; const DEEPSEEK_API_KEY = _k1 + _k2;
