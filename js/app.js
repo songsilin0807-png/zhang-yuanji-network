@@ -1,4 +1,4 @@
-// 张元济社会网络关系研究系统 - 主逻辑
+// 张元济社会网络关系研究系统 - 主逻辑（修复版）
 const DATA_URLS = {
     lettersMeta: 'data/letters_meta.json',
     lettersDemo: 'data/letters_demo.json',
@@ -17,9 +17,10 @@ let appData = {
 };
 
 let searchState = { page: 1, pageSize: 20, results: [] };
-let networkState = { chart: null, nodeCount: 50, activeTypes: new Set() };
-let mapState = { map: null, markers: [], lines: [], yearStart: 1897, yearEnd: 1954 };
+let networkState = { chart: null, nodeCount: 50, activeTypes: new Set(), initialized: false };
+let mapState = { map: null, markers: [], lines: [], yearStart: 1897, yearEnd: 1954, initialized: false };
 let aiState = { mode: 'keyword' };
+let pageInitialized = { search: false, network: false, map: false, ai: false };
 
 // ========== 数据加载 ==========
 async function loadAllData() {
@@ -30,11 +31,13 @@ async function loadAllData() {
 
     for (const key of keys) {
         try {
-            loadingText.textContent = `正在加载 ${key}...`;
+            loadingText.textContent = `正在加载 ${key}... (${loaded}/${keys.length})`;
             const res = await fetch(DATA_URLS[key]);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
             appData[key] = await res.json();
+            console.log(`[数据加载] ${key}: ${appData[key].length} 条`);
         } catch (e) {
-            console.warn(`加载 ${key} 失败:`, e);
+            console.error(`[数据加载失败] ${key}:`, e);
             appData[key] = [];
         }
         loaded++;
@@ -45,18 +48,17 @@ async function loadAllData() {
     setTimeout(() => {
         document.getElementById('loading-overlay').classList.add('hidden');
         initApp();
-    }, 500);
+    }, 300);
 }
 
 // ========== 初始化 ==========
 function initApp() {
     updateStats();
     initNavigation();
-    initSearch();
-    initNetwork();
-    initMapPage();
-    initAI();
     initModal();
+    // 初始化当前可见页面（首页）
+    initPage('home');
+    console.log('[初始化] 应用启动完成');
 }
 
 function updateStats() {
@@ -79,12 +81,33 @@ function initNavigation() {
 function switchPage(page) {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.page === page));
     document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
-    if (page === 'network') setTimeout(() => networkState.chart && networkState.chart.resize(), 100);
-    if (page === 'map') setTimeout(() => mapState.map && mapState.map.invalidateSize(), 100);
+    initPage(page);
+}
+
+function initPage(page) {
+    if (page === 'search' && !pageInitialized.search) {
+        initSearch();
+        pageInitialized.search = true;
+    } else if (page === 'network' && !pageInitialized.network) {
+        setTimeout(() => { initNetwork(); pageInitialized.network = true; }, 100);
+    } else if (page === 'map' && !pageInitialized.map) {
+        setTimeout(() => { initMapPage(); pageInitialized.map = true; }, 100);
+    } else if (page === 'ai' && !pageInitialized.ai) {
+        initAI();
+        pageInitialized.ai = true;
+    }
+    // 已初始化的页面需要重绘
+    if (page === 'network' && pageInitialized.network && networkState.chart) {
+        setTimeout(() => networkState.chart.resize(), 200);
+    }
+    if (page === 'map' && pageInitialized.map && mapState.map) {
+        setTimeout(() => mapState.map.invalidateSize(), 200);
+    }
 }
 
 // ========== 书信检索 ==========
 function initSearch() {
+    console.log('[初始化] 书信检索模块');
     document.getElementById('search-btn').addEventListener('click', doSearch);
     document.getElementById('search-input').addEventListener('keypress', e => { if (e.key === 'Enter') doSearch(); });
     searchState.results = [...appData.lettersMeta];
@@ -109,6 +132,11 @@ function renderLetters() {
     const grid = document.getElementById('letters-grid');
     const count = document.getElementById('search-count');
     count.textContent = `共 ${searchState.results.length} 封书信`;
+    if (searchState.results.length === 0) {
+        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px;color:#999;">未找到匹配的书信</div>';
+        document.getElementById('pagination').innerHTML = '';
+        return;
+    }
     const start = (searchState.page - 1) * searchState.pageSize;
     const pageLetters = searchState.results.slice(start, start + searchState.pageSize);
     grid.innerHTML = pageLetters.map(l => `
@@ -184,14 +212,21 @@ function showLetterModal(id) {
 function closeModal() { document.getElementById('letter-modal').classList.remove('active'); }
 
 // ========== 人物网络 ==========
+function getTypeColor(subtype) {
+    const colors = { '书信往来': '#D4AF37', 'To': '#B8860B', '发电报': '#CD853F', '委托代办': '#4A90D9', '亲友': '#E74C3C', '提及人物': '#95A5A6', '出版合作': '#27AE60', '师生': '#8E44AD', '咨询请教': '#16A085', '业务往来': '#D35400', '赠送答谢': '#E91E63', '邀请邀约': '#00BCD4', '任职': '#795548' };
+    return colors[subtype] || '#999';
+}
+
 function initNetwork() {
+    console.log('[初始化] 人物网络模块');
+    const chartDom = document.getElementById('network-chart');
+    if (!chartDom) { console.error('network-chart 元素不存在'); return; }
+    if (typeof echarts === 'undefined') { console.error('ECharts 未加载'); return; }
+
     const types = appData.relationTypes.length ? appData.relationTypes : [
-        { type: '通信', subtype: '书信往来', color: '#D4AF37' },
-        { type: '通信', subtype: 'To', color: '#B8860B' },
-        { type: '提及', subtype: '委托代办', color: '#4A90D9' },
-        { type: '提及', subtype: '亲友', color: '#E74C3C' },
-        { type: '提及', subtype: '出版合作', color: '#27AE60' },
-        { type: '提及', subtype: '师生', color: '#8E44AD' }
+        { type: '通信', subtype: '书信往来' }, { type: '通信', subtype: 'To' },
+        { type: '提及', subtype: '委托代办' }, { type: '提及', subtype: '亲友' },
+        { type: '提及', subtype: '出版合作' }, { type: '提及', subtype: '师生' }
     ];
     types.forEach(t => networkState.activeTypes.add(t.subtype));
 
@@ -204,15 +239,9 @@ function initNetwork() {
         renderNetwork();
     });
 
-    setTimeout(() => {
-        networkState.chart = echarts.init(document.getElementById('network-chart'));
-        renderNetwork();
-    }, 200);
-}
-
-function getTypeColor(subtype) {
-    const colors = { '书信往来': '#D4AF37', 'To': '#B8860B', '发电报': '#CD853F', '委托代办': '#4A90D9', '亲友': '#E74C3C', '提及人物': '#95A5A6', '出版合作': '#27AE60', '师生': '#8E44AD', '咨询请教': '#16A085', '业务往来': '#D35400', '赠送答谢': '#E91E63', '邀请邀约': '#00BCD4', '任职': '#795548' };
-    return colors[subtype] || '#999';
+    networkState.chart = echarts.init(chartDom);
+    console.log('[人物网络] ECharts 初始化成功');
+    renderNetwork();
 }
 
 function renderFilters(types) {
@@ -224,7 +253,7 @@ function renderFilters(types) {
         html += `<div class="filter-group"><span class="filter-label">${type}：</span>`;
         subs.forEach(t => {
             const color = getTypeColor(t.subtype);
-            html += `<span class="filter-chip active" data-subtype="${t.subtype}" style="border-color:${color};color:${color}">${t.subtype}</span>`;
+            html += `<span class="filter-chip active" data-subtype="${t.subtype}" style="border-color:${color};color:${color};background:${color}22">${t.subtype}</span>`;
         });
         html += '</div>';
     });
@@ -232,8 +261,17 @@ function renderFilters(types) {
     container.querySelectorAll('.filter-chip').forEach(chip => {
         chip.addEventListener('click', () => {
             const st = chip.dataset.subtype;
-            if (networkState.activeTypes.has(st)) { networkState.activeTypes.delete(st); chip.classList.remove('active'); chip.style.background = 'white'; }
-            else { networkState.activeTypes.add(st); chip.classList.add('active'); chip.style.background = getTypeColor(st); chip.style.color = 'white'; }
+            const color = getTypeColor(st);
+            if (networkState.activeTypes.has(st)) {
+                networkState.activeTypes.delete(st);
+                chip.classList.remove('active');
+                chip.style.background = 'white';
+            } else {
+                networkState.activeTypes.add(st);
+                chip.classList.add('active');
+                chip.style.background = color;
+                chip.style.color = 'white';
+            }
             renderNetwork();
         });
     });
@@ -245,14 +283,19 @@ function renderLegend(types) {
 }
 
 function renderNetwork() {
-    if (!networkState.chart) return;
+    if (!networkState.chart) { console.error('图表未初始化'); return; }
     const rels = appData.relations.filter(r => networkState.activeTypes.has(r.subtype));
+    console.log(`[人物网络] 渲染关系: ${rels.length} 条`);
+    if (rels.length === 0) {
+        networkState.chart.clear();
+        return;
+    }
     const nodeMap = {};
     rels.forEach(r => {
         if (!nodeMap[r.source]) nodeMap[r.source] = { name: r.source, count: 0, relations: [] };
         if (!nodeMap[r.target]) nodeMap[r.target] = { name: r.target, count: 0, relations: [] };
-        nodeMap[r.source].count += r.count;
-        nodeMap[r.target].count += r.count;
+        nodeMap[r.source].count += r.count || 1;
+        nodeMap[r.target].count += r.count || 1;
         nodeMap[r.source].relations.push(r);
         nodeMap[r.target].relations.push(r);
     });
@@ -261,10 +304,28 @@ function renderNetwork() {
     topNames.add('张元济');
     const nodes = sorted.filter(n => topNames.has(n.name)).map(n => {
         const intro = appData.peopleIntro.find(p => p.name === n.name);
-        return { name: n.name, value: n.count, symbolSize: Math.min(60, Math.max(15, Math.sqrt(n.count) * 3)), itemStyle: { color: n.name === '张元济' ? '#D4AF37' : '#4A90D9' }, intro: intro ? intro.description : '', relations: n.relations };
+        return {
+            name: n.name, value: n.count,
+            symbolSize: Math.min(50, Math.max(12, Math.sqrt(n.count) * 2.5)),
+            itemStyle: { color: n.name === '张元济' ? '#D4AF37' : '#4A90D9' },
+            intro: intro ? intro.description : '',
+            relations: n.relations || []
+        };
     });
-    const links = rels.filter(r => topNames.has(r.source) && topNames.has(r.target)).map(r => ({ source: r.source, target: r.target, value: r.count, lineStyle: { color: getTypeColor(r.subtype), width: Math.min(8, Math.max(1, Math.sqrt(r.count))), curveness: 0.2 } }));
-    const option = { tooltip: { trigger: 'item', formatter: p => p.dataType === 'node' ? `${p.name}<br/>关系数：${p.value}` : `${p.data.source} → ${p.data.target}<br/>数量：${p.data.value}` }, series: [{ type: 'graph', layout: 'force', data: nodes, links: links, roam: true, label: { show: true, position: 'right', fontSize: 11 }, force: { repulsion: 200, edgeLength: [50, 150], gravity: 0.1 }, emphasis: { focus: 'adjacency', lineStyle: { width: 4 } } }] };
+    const links = rels.filter(r => topNames.has(r.source) && topNames.has(r.target)).map(r => ({
+        source: r.source, target: r.target, value: r.count || 1,
+        lineStyle: { color: getTypeColor(r.subtype), width: Math.min(6, Math.max(1, Math.sqrt(r.count || 1))), curveness: 0.15 }
+    }));
+    console.log(`[人物网络] 节点: ${nodes.length}, 连线: ${links.length}`);
+    const option = {
+        tooltip: { trigger: 'item', formatter: p => p.dataType === 'node' ? `${p.name}<br/>关系数：${p.value}` : `${p.data.source} → ${p.data.target}<br/>数量：${p.data.value}` },
+        series: [{
+            type: 'graph', layout: 'force', data: nodes, links: links,
+            roam: true, label: { show: true, position: 'right', fontSize: 11 },
+            force: { repulsion: 150, edgeLength: [40, 120], gravity: 0.08 },
+            emphasis: { focus: 'adjacency', lineStyle: { width: 4 } }
+        }]
+    };
     networkState.chart.setOption(option, true);
     networkState.chart.off('click');
     networkState.chart.on('click', params => { if (params.dataType === 'node') showPersonDetail(params.data); });
@@ -273,16 +334,21 @@ function renderNetwork() {
 function showPersonDetail(person) {
     const sidebar = document.getElementById('network-sidebar');
     const byType = {};
-    person.relations.forEach(r => { if (!byType[r.subtype]) byType[r.subtype] = 0; byType[r.subtype] += r.count; });
+    (person.relations || []).forEach(r => { if (!byType[r.subtype]) byType[r.subtype] = 0; byType[r.subtype] += r.count || 1; });
     let html = `<div class="sidebar-name">${person.name}</div><div class="sidebar-desc">${person.intro || '暂无简介'}</div><div class="sidebar-stats"><div class="sidebar-stat"><span class="type">总关系数</span><span class="count">${person.value}</span></div>`;
     Object.entries(byType).sort((a, b) => b[1] - a[1]).forEach(([type, count]) => { html += `<div class="sidebar-stat"><span class="type">${type}</span><span class="count">${count}</span></div>`; });
     html += '</div><div class="sidebar-letters-title">相关关系</div>';
-    person.relations.slice(0, 10).forEach(r => { html += `<div class="sidebar-letter-item">${r.source} ↔ ${r.target} [${r.subtype}] ×${r.count}</div>`; });
+    (person.relations || []).slice(0, 10).forEach(r => { html += `<div class="sidebar-letter-item">${r.source} ↔ ${r.target} [${r.subtype}] ×${r.count || 1}</div>`; });
     sidebar.innerHTML = html;
 }
 
 // ========== 时空地图 ==========
 function initMapPage() {
+    console.log('[初始化] 时空地图模块');
+    const mapDom = document.getElementById('map');
+    if (!mapDom) { console.error('map 元素不存在'); return; }
+    if (typeof L === 'undefined') { console.error('Leaflet 未加载'); return; }
+
     const years = appData.geoLetters.map(g => parseInt(g.year)).filter(y => !isNaN(y));
     if (years.length) { mapState.yearStart = Math.min(...years); mapState.yearEnd = Math.max(...years); }
     document.getElementById('year-start').textContent = mapState.yearStart;
@@ -292,11 +358,11 @@ function initMapPage() {
     s2.min = mapState.yearStart; s2.max = mapState.yearEnd; s2.value = mapState.yearEnd;
     s1.addEventListener('input', () => { if (parseInt(s1.value) > parseInt(s2.value)) s1.value = s2.value; mapState.yearStart = parseInt(s1.value); document.getElementById('year-start').textContent = mapState.yearStart; renderMap(); });
     s2.addEventListener('input', () => { if (parseInt(s2.value) < parseInt(s1.value)) s2.value = s1.value; mapState.yearEnd = parseInt(s2.value); document.getElementById('year-end').textContent = mapState.yearEnd; renderMap(); });
-    setTimeout(() => {
-        mapState.map = L.map('map').setView([35, 110], 4);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© CARTO', maxZoom: 19 }).addTo(mapState.map);
-        renderMap();
-    }, 300);
+
+    mapState.map = L.map('map').setView([35, 110], 4);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© CARTO', maxZoom: 19 }).addTo(mapState.map);
+    console.log('[时空地图] Leaflet 初始化成功');
+    setTimeout(() => { mapState.map.invalidateSize(); renderMap(); }, 200);
 }
 
 function renderMap() {
@@ -317,8 +383,7 @@ function renderMap() {
         }
     });
     Object.entries(routeMap).forEach(([key, r]) => {
-        const points = [[r.fromLat, r.fromLng], [r.toLat, r.toLng]];
-        const line = L.polyline(points, { color: '#D4AF37', weight: Math.min(8, Math.max(1, Math.sqrt(r.count))), opacity: 0.6, dashArray: '5,5' }).addTo(mapState.map);
+        const line = L.polyline([[r.fromLat, r.fromLng], [r.toLat, r.toLng]], { color: '#D4AF37', weight: Math.min(8, Math.max(1, Math.sqrt(r.count))), opacity: 0.6, dashArray: '5,5' }).addTo(mapState.map);
         line.bindPopup(`${r.from} → ${r.to}<br/>信件数：${r.count}`);
         mapState.lines.push(line);
     });
@@ -336,6 +401,7 @@ function renderMap() {
 
 // ========== AI问答 ==========
 function initAI() {
+    console.log('[初始化] AI问答模块');
     document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -410,4 +476,5 @@ async function deepseekAnswer(question) {
 }
 
 // ========== 启动 ==========
+console.log('[启动] 张元济社会网络关系研究系统');
 loadAllData();
